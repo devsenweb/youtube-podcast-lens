@@ -71,6 +71,42 @@
         topicSegmentsOutput.value = 'Error: ' + e.message;
       }
     }
+    // Fetch and display segment images if available
+    try {
+      const segRes = await fetch(`/segments/${videoId}.json`);
+      if (segRes.ok) {
+        loadedSegments = await segRes.json();
+        // Populate the bottom gallery
+        const segmentImagesPreview = document.getElementById('segmentImagesPreview');
+        if (segmentImagesPreview) {
+          segmentImagesPreview.innerHTML = '';
+          loadedSegments.forEach(seg => {
+            if (seg.image) {
+              const img = document.createElement('img');
+              img.src = `/images/${seg.image}`;
+              img.alt = seg.keyword || '';
+              img.title = `[${seg.start}] ${seg.keyword}`;
+              img.style.maxWidth = '220px';
+              img.style.maxHeight = '160px';
+              img.style.borderRadius = '8px';
+              img.style.margin = '0.5em';
+              segmentImagesPreview.appendChild(img);
+            }
+          });
+          // Show the section if images exist
+          if (loadedSegments.some(seg => seg.image)) {
+            document.getElementById('mainContent').style.display = 'block';
+          } else {
+            document.getElementById('mainContent').style.display = 'none';
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('No segment images found or error loading:', e);
+      document.getElementById('mainContent').style.display = 'none';
+    }
+    // Immediately update side panel for playhead 0
+    updateKeywordsAndImages(0);
   } catch (e) {
     transcriptPre.textContent = 'Error: ' + e.message;
   }
@@ -170,20 +206,66 @@ if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
 
 let playerTimeInterval = null;
 
+// Store loaded segments globally
+let loadedSegments = null;
+
 function startPlayerTimePolling() {
   console.log('[startPlayerTimePolling] ENTRY');
   stopPlayerTimePolling(); // Ensure only one interval
-  
+
   if (window.ytPlayer && window.ytPlayerReady) {
     playerTimeInterval = setInterval(() => {
       const time = window.ytPlayer.getCurrentTime();
       document.getElementById('playerTime').textContent = `Current Time: ${time.toFixed(2)}s`;
       console.log('[getCurrentPlayerTime] Current player time (YT API):', time);
-      // updateKeywordsAndImages(); // Uncomment when you implement this
+      updateKeywordsAndImages(time);
     }, 1000);
     console.log('[Polling] Started.');
   }
 }
+
+// Helper: Find current segment by playhead time
+function getCurrentSegment(time) {
+  if (!loadedSegments || !Array.isArray(loadedSegments)) return null;
+  // Convert time (seconds) to MM:SS
+  const pad = n => String(n).padStart(2, '0');
+  const curMM = pad(Math.floor(time / 60));
+  const curSS = pad(Math.floor(time % 60));
+  let lastSeg = null;
+  for (const seg of loadedSegments) {
+    if (!seg.start) continue;
+    const [mm, ss] = seg.start.split(':').map(Number);
+    const segTime = mm * 60 + ss;
+    if (time >= segTime) lastSeg = seg;
+    else break;
+  }
+  return lastSeg;
+}
+
+function updateKeywordsAndImages(time) {
+  const keywordsDiv = document.getElementById('keywordsAtPlayhead');
+  const imagesDiv = document.getElementById('imagesAtPlayhead');
+  if (!keywordsDiv || !imagesDiv) return;
+  const seg = getCurrentSegment(time);
+  if (seg) {
+    keywordsDiv.textContent = `[${seg.start}] ${seg.keyword}`;
+    imagesDiv.innerHTML = '';
+    if (seg.image) {
+      const img = document.createElement('img');
+      img.src = `/images/${seg.image}`;
+      img.alt = seg.keyword || '';
+      img.title = `[${seg.start}] ${seg.keyword}`;
+      img.style.maxWidth = '100%';
+      img.style.maxHeight = '120px';
+      img.style.borderRadius = '8px';
+      imagesDiv.appendChild(img);
+    }
+  } else {
+    keywordsDiv.textContent = '(No keywords yet)';
+    imagesDiv.innerHTML = '';
+  }
+}
+
 
 function stopPlayerTimePolling() {
   console.log('[stopPlayerTimePolling] ENTRY');
