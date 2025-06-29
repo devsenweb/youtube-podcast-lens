@@ -23,11 +23,9 @@
     <div id="youtubePlayer" style="width:400px; height:225px;"></div>
     <div id="playerTime" style="margin-top: 0.5em;"></div>
   </div>
-  <div id="keywordImagePanel" style="min-width: 240px; max-width: 320px;">
-  <div id="unsplashImagePreview" style="width:100%;height:180px;background:#eee;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;margin-bottom:0.5em;"></div>
-    <h3>Keywords & Images</h3>
+  <div id="keywordImagePanel" style="width:400px;">
     <div id="keywordsAtPlayhead">(No keywords yet)</div>
-    <div id="imagesAtPlayhead" style="display: flex; flex-wrap: wrap; gap: 0.5em;"></div>
+    <div id="imagesAtPlayhead" style="width:400px;height:225px;background:#eee;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;"></div>
   </div>
 </div>
   <pre id="transcript"></pre>
@@ -45,12 +43,7 @@
 
   <div id="visualsBanner" style="display:none;position:fixed;top:0;left:0;width:100vw;background:#222;color:#fff;font-size:1.2em;padding:0.7em 0;text-align:center;z-index:1000;box-shadow:0 2px 8px #0008;letter-spacing:1px;">Generating visuals...</div>
 
-  <div id="mainContent" style="display:none;">
-    <div style="margin:2em 0 1em 0;">
-      <div id="segmentImagesPreview" style="display:flex;flex-wrap:wrap;gap:1em;margin-top:1em;"></div>
-    </div>
-  </div>
-  
+
   <!-- Load main.js BEFORE setting up event listeners -->
   <script src="/static/main.js"></script>
 </body>

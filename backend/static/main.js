@@ -418,8 +418,9 @@ function updateKeywordsAndImages(time) {
       img.src = `/images/${seg.image}`;
       img.alt = seg.keyword || '';
       img.title = `[${seg.start}] ${seg.keyword}`;
-      img.style.maxWidth = '100%';
-      img.style.maxHeight = '120px';
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'cover';
       img.style.borderRadius = '8px';
       imagesDiv.appendChild(img);
     }
