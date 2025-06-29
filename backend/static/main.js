@@ -11,13 +11,13 @@
 
   // Define fetchTranscript function first
   async function fetchTranscript() {
-  console.log('[fetchTranscript] ENTRY');
-  const url = document.getElementById('videoIdInput').value;
-  const videoId = extractVideoId(url);
-  const transcriptPre = document.getElementById('transcript');
-  const topicSegmentsOutput = document.getElementById('topicSegmentsOutput');
-  transcriptPre.textContent = 'Loading...';
-  if (topicSegmentsOutput) topicSegmentsOutput.value = '';
+    console.log('[fetchTranscript] ENTRY');
+    const url = document.getElementById('videoIdInput').value;
+    const videoId = extractVideoId(url);
+    const transcriptPre = document.getElementById('transcript');
+    const topicSegmentsOutput = document.getElementById('topicSegmentsOutput');
+    transcriptPre.textContent = 'Loading...';
+    if (topicSegmentsOutput) topicSegmentsOutput.value = '';
 
   if (!videoId) {
     console.error('[fetchTranscript] Invalid or missing videoId.');
@@ -28,6 +28,69 @@
 
   // Update the YouTube player
   updateYouTubePlayer(videoId);
+
+  // Check if segment JSON already exists
+  let segmentExists = false;
+  try {
+    const segCheck = await fetch(`/api/segments/${videoId}`, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    if (segCheck.ok) segmentExists = true;
+    // Immediately cancel reading body to avoid unnecessary work
+    if (segCheck.body && typeof segCheck.body.cancel === 'function') {
+      try { segCheck.body.cancel(); } catch (_) {}
+    }
+  } catch (e) {
+    segmentExists = false;
+  }
+
+  // Check for 'regenerate' checkbox
+  const regenerateCheckbox = document.getElementById('regenerateCheckbox');
+  const forceRegenerate = regenerateCheckbox && regenerateCheckbox.checked;
+
+  if (segmentExists && !forceRegenerate) {
+    // Fetch existing segment JSON
+    try {
+      const response = await fetch(`/api/segments/${videoId}`);
+      if (!response.ok) throw new Error(`Failed to fetch segment JSON: ${response.status} ${response.statusText}`);
+      const data = await response.json();
+      loadedSegments = data;
+      // Normalize start timestamps to seconds numbers
+      loadedSegments.forEach(seg => {
+        if (typeof seg.start === 'string' && seg.start.includes(':')) {
+          const [mm, ss] = seg.start.split(':').map(x => parseInt(x, 10));
+          if (!isNaN(mm) && !isNaN(ss)) seg.start = mm * 60 + ss;
+        }
+      });
+      // Fetch full transcript lines for display
+      try {
+        const tRes = await fetch(`/api/transcript/?video_id=${encodeURIComponent(videoId)}`);
+        if (tRes.ok) {
+          const tData = await tRes.json();
+          if (Array.isArray(tData) && transcriptPre) {
+            transcriptPre.textContent = tData.map(seg => {
+              const min = String(Math.floor(seg.start/60)).padStart(2,'0');
+              const sec = String(Math.floor(seg.start%60)).padStart(2,'0');
+              return `[${min}:${sec}] ${seg.text}`;
+            }).join('\n');
+          }
+        }
+      } catch(_) {}
+
+
+      // Populate the keywords/side panel
+      const topicSegmentsOutput = document.getElementById('topicSegmentsOutput');
+      if (topicSegmentsOutput) {
+        topicSegmentsOutput.value = loadedSegments.map(seg => `[${seg.start}] ${seg.keyword}`).join('\n');
+      }
+      // Immediately update side panel for playhead 0
+      updateKeywordsAndImages(0);
+    } catch (e) {
+      console.error('[fetchTranscript] Error fetching segment JSON:', e);
+    }
+    return;
+  }
 
   // Fetch transcript from backend
   try {
@@ -50,14 +113,14 @@
       const sec = String(Math.floor(seg.start%60)).padStart(2,'0');
       return `[${min}:${sec}] ${seg.text}`;
     }).join('\n');
-    // Optionally, fetch topic segments (keywords)
+    // Optionally, fetch topic segments (keywords)dddd
     if (topicSegmentsOutput) {
       topicSegmentsOutput.value = 'Loading...';
       try {
         const res = await fetch('/api/topic-keywords', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ transcript: transcript.map(seg => seg.text).join(' ') })
+          body: JSON.stringify({ videoId, transcript: transcript.map(seg => seg.text).join(' ') })
         });
         const topicData = await res.json();
         if (topicData.segments && Array.isArray(topicData.segments)) {
@@ -73,10 +136,17 @@
     }
     // Fetch and display segment images if available
     try {
-      const segRes = await fetch(`/segments/${videoId}.json`);
+      const segRes = await fetch(`/api/segments/${videoId}`);
       if (segRes.ok) {
         loadedSegments = await segRes.json();
-        // Populate the bottom gallery
+        // Normalize start timestamps to seconds numbers
+        loadedSegments.forEach(seg => {
+          if (typeof seg.start === 'string' && seg.start.includes(':')) {
+            const [mm, ss] = seg.start.split(':').map(x => parseInt(x, 10));
+            if (!isNaN(mm) && !isNaN(ss)) seg.start = mm * 60 + ss;
+          }
+        });
+        
         const segmentImagesPreview = document.getElementById('segmentImagesPreview');
         if (segmentImagesPreview) {
           segmentImagesPreview.innerHTML = '';
@@ -108,28 +178,28 @@
     // Immediately update side panel for playhead 0
     updateKeywordsAndImages(0);
   } catch (e) {
-    transcriptPre.textContent = 'Error: ' + e.message;
+    console.error('[fetchTranscript] Error processing transcript or segments:', e);
+    transcriptPre.textContent = 'Error processing transcript or segments.';
   }
-}
-
+  } // End of fetchTranscript
 
   // IMMEDIATELY expose to window
   window.fetchTranscript = fetchTranscript;
 
-function extractVideoId(url) {
-  // Robust extraction: handles various YouTube URL formats and plain IDs
-  const patterns = [
-    /(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{11})/, // common patterns
-    /youtube\.com\/watch\?.*?v=([\w-]{11})/,           // explicit v= param
-  ];
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) return match[1];
+  function extractVideoId(url) {
+    // Robust extraction: handles various YouTube URL formats and plain IDs
+    const patterns = [
+      /(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{11})/, // common patterns
+      /youtube\.com\/watch\?.*?v=([\w-]{11})/,           // explicit v= param
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    // fallback: if input is just the ID
+    if (/^[\w-]{11}$/.test(url)) return url;
+    return null;
   }
-  // fallback: if input is just the ID
-  if (/^[\w-]{11}$/.test(url)) return url;
-  return null;
-}
 
 function updateYouTubePlayer(videoId) {
   try {
@@ -208,6 +278,7 @@ let playerTimeInterval = null;
 
 // Store loaded segments globally
 let loadedSegments = null;
+let segmentsRefreshAttempted = false;
 
 function startPlayerTimePolling() {
   console.log('[startPlayerTimePolling] ENTRY');
@@ -233,9 +304,16 @@ function getCurrentSegment(time) {
   const curSS = pad(Math.floor(time % 60));
   let lastSeg = null;
   for (const seg of loadedSegments) {
-    if (!seg.start) continue;
-    const [mm, ss] = seg.start.split(':').map(Number);
-    const segTime = mm * 60 + ss;
+    if (seg.start == null) continue;
+    let segTime;
+    if (typeof seg.start === 'number') {
+      segTime = seg.start;
+    } else if (typeof seg.start === 'string' && seg.start.includes(':')) {
+      const [mm, ss] = seg.start.split(':').map(Number);
+      segTime = mm * 60 + ss;
+    } else {
+      continue;
+    }
     if (time >= segTime) lastSeg = seg;
     else break;
   }
@@ -248,6 +326,14 @@ function updateKeywordsAndImages(time) {
   if (!keywordsDiv || !imagesDiv) return;
   const seg = getCurrentSegment(time);
   if (seg) {
+    // If this segment still lacks an image, try reloading segments once (after BG image gen)
+    if (!seg.image && !segmentsRefreshAttempted) {
+      segmentsRefreshAttempted = true;
+      fetch(`/api/segments/${encodeURIComponent(extractVideoId(document.getElementById('videoIdInput').value))}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(js => { if(js){ loadedSegments = js; } })
+        .catch(()=>{});
+    }
     keywordsDiv.textContent = `[${seg.start}] ${seg.keyword}`;
     imagesDiv.innerHTML = '';
     if (seg.image) {
@@ -292,5 +378,4 @@ function getCurrentPlayerTime() {
   window.getCurrentPlayerTime = getCurrentPlayerTime;
 
   console.log('[main.js] All functions initialized. window.fetchTranscript is', typeof window.fetchTranscript);
-  
 })(); // End IIFE
