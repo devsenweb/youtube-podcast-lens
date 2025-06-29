@@ -3,6 +3,14 @@
   'use strict';
   
   console.log('[main.js] Script loading...');
+  // Utility for loading overlay
+  function showLoading(msg){
+    const m=document.getElementById('loadingModal');
+    if(!m) return; m.style.display='block';
+    const s=document.getElementById('loadingStatusMsg'); if(s&&msg) s.textContent=msg;
+  }
+  function hideLoading(){ const m=document.getElementById('loadingModal'); if(m) m.style.display='none'; }
+  
 
   // --- CLEAN YOUTUBE PLAYER INITIALIZATION ---
   if (typeof window.ytPlayer === "undefined") window.ytPlayer = null;
@@ -26,8 +34,8 @@
     return;
   }
 
-  // Update the YouTube player
-  updateYouTubePlayer(videoId);
+  // We will load the player later unless we are using cached segments
+  let deferPlayerLoad = false;
 
   // Check if segment JSON already exists
   let segmentExists = false;
@@ -50,6 +58,8 @@
   const forceRegenerate = regenerateCheckbox && regenerateCheckbox.checked;
 
   if (segmentExists && !forceRegenerate) {
+    // Cached path -> load player immediately
+    updateYouTubePlayer(videoId);
     // Fetch existing segment JSON
     try {
       const response = await fetch(`/api/segments/${videoId}`);
@@ -92,6 +102,44 @@
     return;
   }
 
+  // Show overlay while we prepare visuals
+  showLoading('Preparing visuals. Please wait while we analyze the transcript and generate topic images...');
+  deferPlayerLoad = true;
+  // Start polling DB until images ready
+  if(imagesReadyPoll) clearInterval(imagesReadyPoll);
+  imagesReadyPoll = setInterval(async ()=>{
+    try{
+      const r = await fetch(`/api/segments/${videoId}`, {headers:{'Cache-Control':'no-cache'}});
+      if(!r.ok) return;
+      const js = await r.json();
+      if(Array.isArray(js) && js.length>0 && js.every(s=>s.image)){
+        loadedSegments = js;
+        clearInterval(imagesReadyPoll);
+        imagesReadyPoll = null;
+        hideLoading();
+        updateYouTubePlayer(videoId);
+        // refresh gallery preview
+        const segmentImagesPreview = document.getElementById('segmentImagesPreview');
+        if(segmentImagesPreview){
+          segmentImagesPreview.innerHTML='';
+          js.forEach(s=>{
+            if(s.image){
+              const img=document.createElement('img');
+              img.src=`/images/${s.image}`;
+              img.alt=s.keyword||'';
+              img.title=`[${s.start}] ${s.keyword}`;
+              img.style.maxWidth='220px';
+              img.style.maxHeight='160px';
+              img.style.borderRadius='8px';
+              img.style.margin='0.5em';
+              segmentImagesPreview.appendChild(img);
+            }
+          });
+          document.getElementById('mainContent').style.display='block';
+        }
+      }
+    }catch(_){}
+  }, 4000);
   // Fetch transcript from backend
   try {
     const response = await fetch(`/api/transcript/?video_id=${encodeURIComponent(videoId)}`);
@@ -164,6 +212,8 @@
             }
           });
           // Show the section if images exist
+          const allHaveImages = loadedSegments.length>0 && loadedSegments.every(s=>s.image);
+          if(allHaveImages){ hideLoading(); if(deferPlayerLoad) updateYouTubePlayer(videoId); }
           if (loadedSegments.some(seg => seg.image)) {
             document.getElementById('mainContent').style.display = 'block';
           } else {
@@ -278,7 +328,8 @@ let playerTimeInterval = null;
 
 // Store loaded segments globally
 let loadedSegments = null;
-let segmentsRefreshAttempted = false;
+let lastSegmentsRefresh = 0; // timestamp ms of last refresh attempt
+let imagesReadyPoll = null; // interval id
 
 function startPlayerTimePolling() {
   console.log('[startPlayerTimePolling] ENTRY');
@@ -326,12 +377,38 @@ function updateKeywordsAndImages(time) {
   if (!keywordsDiv || !imagesDiv) return;
   const seg = getCurrentSegment(time);
   if (seg) {
-    // If this segment still lacks an image, try reloading segments once (after BG image gen)
-    if (!seg.image && !segmentsRefreshAttempted) {
-      segmentsRefreshAttempted = true;
+    // If this segment lacks an image, periodically try to refresh segments (max every 4s)
+    const now = Date.now();
+    if (!seg.image && now - lastSegmentsRefresh > 4000) {
+      lastSegmentsRefresh = now;
       fetch(`/api/segments/${encodeURIComponent(extractVideoId(document.getElementById('videoIdInput').value))}`)
         .then(r => r.ok ? r.json() : null)
-        .then(js => { if(js){ loadedSegments = js; } })
+        .then(js => {
+          if (js && Array.isArray(js)) {
+            loadedSegments = js;
+            // also refresh gallery preview images; if now all images present hide overlay and load player
+            const allImagesNow = js.length>0 && js.every(s=>s.image);
+            if(allImagesNow){ hideLoading(); if(deferPlayerLoad) updateYouTubePlayer(extractVideoId(document.getElementById('videoIdInput').value)); }
+            // also refresh gallery preview images
+            const segmentImagesPreview = document.getElementById('segmentImagesPreview');
+            if (segmentImagesPreview) {
+              segmentImagesPreview.innerHTML = '';
+              loadedSegments.forEach(s => {
+                if (s.image) {
+                  const img = document.createElement('img');
+                  img.src = `/images/${s.image}`;
+                  img.alt = s.keyword || '';
+                  img.title = `[${s.start}] ${s.keyword}`;
+                  img.style.maxWidth = '220px';
+                  img.style.maxHeight = '160px';
+                  img.style.borderRadius = '8px';
+                  img.style.margin = '0.5em';
+                  segmentImagesPreview.appendChild(img);
+                }
+              });
+            }
+          }
+        })
         .catch(()=>{});
     }
     keywordsDiv.textContent = `[${seg.start}] ${seg.keyword}`;
