@@ -5,20 +5,28 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>YouTube Podcast Lens</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
-  <h1>YouTube Podcast Lens<br> </h1>
+<body class="bg-gray-50 font-sans">
+  <div class="max-w-5xl mx-auto p-6">
+  <h1 class="text-3xl font-bold text-gray-800 mb-2 text-center">YouTube Podcast Lens</h1>
+  <div style="text-align:center;margin-top:2em;margin-bottom:2em;">
+    <a href="/login" id="loginBtn">
+      <button class="bg-red-600 text-white px-6 py-2 rounded">Login with Google</button>
+    </a>
+  </div>
+  <div id="userInfo" style="text-align:center;margin-bottom:1em;"></div>
   https://www.youtube.com/watch?v=v4OeGKUACmc&ab_channel=TomGreen <br>
   https://www.youtube.com/watch?v=qQMjKrrgLRo&ab_channel=1MinutePodcast<br>
   <div>
-    <input id="videoIdInput" type="text" placeholder="Enter YouTube URL or Video ID">
-    <button id="fetchTranscriptBtn" onclick="window.fetchTranscript()">Fetch Transcript</button>
-    <label style="margin-left:1em;"><input type="checkbox" id="regenerateCheckbox"> Regenerate</label>
+    <input id="videoIdInput" type="text" placeholder="Enter YouTube URL or Video ID" class="w-full md:w-96 px-3 py-2 border rounded-lg shadow focus:outline-none focus:ring-2 focus:ring-blue-500">
+    <button id="fetchTranscriptBtn" onclick="window.fetchTranscript()" class="mt-2 md:mt-0 md:ml-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition">Fetch Transcript</button>
+    <label class="ml-4 inline-flex items-center space-x-2 text-sm"><input type="checkbox" id="regenerateCheckbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"> <span>Regenerate</span></label>
 </div>
 
 </div>
-<div style="display: flex; flex-direction: row; gap: 2em; margin: 1em 0; align-items: flex-start;">
+<div style="display: flex; flex-direction: row; gap: 2em; margin: 1em 0; align-items: flex-start; justify-content: center;">
   <div>
     <div id="youtubePlayer" style="width:400px; height:225px;"></div>
     <div id="playerTime" style="margin-top: 0.5em;"></div>
@@ -44,6 +52,7 @@
   <div id="visualsBanner" style="display:none;position:fixed;top:0;left:0;width:100vw;background:#222;color:#fff;font-size:1.2em;padding:0.7em 0;text-align:center;z-index:1000;box-shadow:0 2px 8px #0008;letter-spacing:1px;">Generating visuals...</div>
 
 
+    </div>
   <!-- Load main.js BEFORE setting up event listeners -->
   <script src="/static/main.js"></script>
 </body>

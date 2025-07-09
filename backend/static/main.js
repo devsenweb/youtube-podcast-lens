@@ -3,6 +3,44 @@
   'use strict';
   
   console.log('[main.js] Script loading...');
+
+  // --- USER INFO FETCH & DISPLAY ---
+  async function fetchAndShowUser() {
+    try {
+      const res = await fetch('/api/user');
+      const user = await res.json();
+      const userDiv = document.getElementById('userInfo');
+      const loginBtn = document.getElementById('loginBtn');
+      console.log('[fetchAndShowUser] user:', user);
+      if (user && user.email) {
+        userDiv.innerHTML = `
+          <div style="display:inline-block;padding:1em;border-radius:10px;background:#fff;box-shadow:0 2px 10px #0001;">
+            <img src="${user.picture}" alt="User" style="width:48px;height:48px;border-radius:50%;vertical-align:middle;margin-right:1em;">
+            <span style="font-weight:bold;">${user.name}</span><br>
+            <span style="font-size:0.95em;color:#666;">${user.email}</span>
+            <a href="/logout"><button style="margin-left:1em;" class="bg-gray-300 text-black px-3 py-1 rounded">Logout</button></a>
+          </div>
+        `;
+        if (loginBtn) {
+          loginBtn.style.display = "none";
+          console.log('[fetchAndShowUser] Hiding loginBtn');
+        }
+      } else {
+        userDiv.innerHTML = "";
+        if (loginBtn) {
+          loginBtn.style.display = "";
+          console.log('[fetchAndShowUser] Showing loginBtn');
+        }
+      }
+    } catch (e) {
+      console.error('[fetchAndShowUser] Error:', e);
+    }
+  }
+  window.fetchAndShowUser = fetchAndShowUser;
+  document.addEventListener('DOMContentLoaded', () => {
+    fetchAndShowUser();
+  });
+
   // Utility for loading overlay
   function showLoading(msg){
     const m=document.getElementById('loadingModal');
@@ -72,7 +110,7 @@
           const [mm, ss] = seg.start.split(':').map(x => parseInt(x, 10));
           if (!isNaN(mm) && !isNaN(ss)) seg.start = mm * 60 + ss;
         }
-      });
+      })
       // Fetch full transcript lines for display
       try {
         const tRes = await fetch(`/api/transcript/?video_id=${encodeURIComponent(videoId)}`);
@@ -114,30 +152,48 @@
       const js = await r.json();
       if(Array.isArray(js) && js.length>0 && js.every(s=>s.image)){
         loadedSegments = js;
-        clearInterval(imagesReadyPoll);
-        imagesReadyPoll = null;
-        hideLoading();
-        updateYouTubePlayer(videoId);
-        // refresh gallery preview
-        const segmentImagesPreview = document.getElementById('segmentImagesPreview');
-        if(segmentImagesPreview){
-          segmentImagesPreview.innerHTML='';
-          js.forEach(s=>{
-            if(s.image){
-              const img=document.createElement('img');
-              img.src=`/images/${s.image}`;
-              img.alt=s.keyword||'';
-              img.title=`[${s.start}] ${s.keyword}`;
-              img.style.maxWidth='220px';
-              img.style.maxHeight='160px';
-              img.style.borderRadius='8px';
-              img.style.margin='0.5em';
-              segmentImagesPreview.appendChild(img);
+        // Preload all images and only hide overlay when every image loads
+        const preloadPromises = js.map(seg => new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(true);
+          img.onerror = () => reject(new Error(`Image not ready: ${seg.image}`));
+          img.src = `/images/${seg.image}?t=${Date.now()}`; // cache-bust
+        }));
+
+        Promise.all(preloadPromises)
+          .then(() => {
+            // All good -> stop polling and hide overlay
+            clearInterval(imagesReadyPoll);
+            imagesReadyPoll = null;
+
+            hideLoading();
+            updateYouTubePlayer(videoId);
+            // refresh gallery preview
+            const segmentImagesPreview = document.getElementById('segmentImagesPreview');
+            if (segmentImagesPreview) {
+              segmentImagesPreview.innerHTML = '';
+              js.forEach(s => {
+                if (s.image) {
+                  const img = document.createElement('img');
+                  img.src = `/images/${s.image}`;
+                  img.alt = s.keyword || '';
+                  img.title = `[${s.start}] ${s.keyword}`;
+                  img.style.maxWidth = '220px';
+                  img.style.maxHeight = '160px';
+                  img.style.borderRadius = '8px';
+                  img.style.margin = '0.5em';
+                  segmentImagesPreview.appendChild(img);
+                }
+              });
+              document.getElementById('mainContent').style.display = 'block';
             }
+          })
+          .catch(err => {
+            console.warn('[Preload] Some images not ready yet, waiting...', err.message);
+            // Do NOT hide overlay; simply allow next poll iteration
           });
-          document.getElementById('mainContent').style.display='block';
         }
-      }
+
     }catch(_){}
   }, 4000);
   // Fetch transcript from backend

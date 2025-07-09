@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -9,6 +12,69 @@ import os
 import db
 
 app = FastAPI()
+
+from authlib.integrations.starlette_client import OAuth
+from starlette.config import Config
+from starlette.middleware.sessions import SessionMiddleware
+from fastapi.responses import RedirectResponse, JSONResponse
+
+config = Config('.env')
+oauth = OAuth(config)
+import os
+app.add_middleware(SessionMiddleware, secret_key=os.environ['SECRET_KEY'])
+
+oauth.register(
+    name='google',
+    client_id=os.getenv("GOOGLE_CLIENT_ID"),
+    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'},
+    userinfo_endpoint='https://openidconnect.googleapis.com/v1/userinfo'
+)
+
+from fastapi import Request
+
+@app.get("/api/user")
+async def get_user(request: Request):
+    user = request.session.get('user')
+    if user:
+        return JSONResponse(user)
+    return JSONResponse({})
+
+@app.get("/login")
+async def login(request: Request):
+    redirect_uri = request.url_for('auth')
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+@app.get("/auth/google/callback")
+async def auth(request: Request):
+    token = await oauth.google.authorize_access_token(request)
+    print("Google token response:", token)  # Debug: see what's in the token
+    user = None
+    # Defensive: check for id_token in token
+    if token and isinstance(token, dict) and "id_token" in token:
+        try:
+            user = await oauth.google.parse_id_token(request, token)
+        except Exception as e:
+            print("Failed to parse id_token:", e)
+            user = None
+    if not user:
+        # Fallback: fetch userinfo from Google using httpx directly
+        import httpx
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                'https://openidconnect.googleapis.com/v1/userinfo',
+                headers={'Authorization': f'Bearer {token["access_token"]}'}
+            )
+            user = resp.json()
+            print("Fetched userinfo from userinfo endpoint:", user)
+    request.session['user'] = dict(user)
+    return RedirectResponse(url="/")
+
+@app.get("/logout")
+def logout(request: Request):
+    request.session.pop('user', None)
+    return RedirectResponse(url="/")
 
 # Serve static files (frontend build)
 frontend_dist = os.path.join(os.path.dirname(__file__), 'static')
