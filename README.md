@@ -121,6 +121,3 @@ youtube-podcast-lens/
 
 ---
 
-## License
-
-MIT License
